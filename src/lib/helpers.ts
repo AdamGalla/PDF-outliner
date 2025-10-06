@@ -9,8 +9,10 @@ import {
   PDFRef,
   PDFString,
 } from 'pdf-lib';
-import * as pdfjsLib from 'pdfjs-dist';
+import { pdfjsLib } from '@/pdfConfig';
 import type { PageViewport, PDFPageProxy, RenderTask } from 'pdfjs-dist';
+import { BASE_URL } from './utils';
+import type { NamedBuffer, NamedPdf } from './types';
 
 export interface PDFOutline {
   title: string;
@@ -242,12 +244,11 @@ function normalizePdfOutlineTitle(raw: string): string {
   // Drop any repeated BOM-pair artifacts inside
   s = s.replace(/(?:\u00FE\u00FF|\u00FF\u00FE)/g, '');
   // Remove interleaved NUL bytes from UTF-16 seen as Latin-1
+  // eslint-disable-next-line no-control-regex
   s = s.replace(/\u0000/g, '');
   return s;
 }
 
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs';
 
 // PDF rendering interfaces and types
 export interface PDFRenderOptions {
@@ -266,13 +267,27 @@ export interface PDFPageInfo {
   renderTask: RenderTask;
 }
 
+// Local helper types to avoid `any` when interacting with PDF.js and DOM augmentation
+type CanvasWithRenderTask = HTMLCanvasElement & { __pdfjsRenderTask?: RenderTask };
+type PdfJsRef = { num: number; gen: number };
+type PdfJsRefLike = PdfJsRef | null | undefined;
+type PdfJsDestinationArray = unknown[];
+type PdfJsDestInput = string | PdfJsDestinationArray | null | undefined;
+type PdfJsOutlineUnknown = {
+  title?: unknown;
+  dest?: PdfJsDestInput;
+  bold?: unknown;
+  italic?: unknown;
+  items?: unknown[];
+};
+
 /**
  * Load a PDF document using PDF.js
  */
 export async function loadPdfWithPdfJs(arrayBuffer: ArrayBuffer): Promise<pdfjsLib.PDFDocumentProxy> {
   const loadingTask = pdfjsLib.getDocument({
     data: arrayBuffer,
-    cMapUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/',
+    cMapUrl: `${BASE_URL}/cmaps/`,
     cMapPacked: true,
   });
 
@@ -281,16 +296,17 @@ export async function loadPdfWithPdfJs(arrayBuffer: ArrayBuffer): Promise<pdfjsL
 
 // Detect if an error represents a PDF.js rendering cancellation
 export function isPdfJsCancelError(err: unknown): boolean {
-  const anyErr = err as any;
-  const name = typeof anyErr?.name === 'string' ? anyErr.name : '';
-  const message = typeof anyErr?.message === 'string' ? anyErr.message : String(anyErr ?? '');
+  const asObj = err as { name?: unknown; message?: unknown } | undefined;
+  const name = typeof asObj?.name === 'string' ? asObj.name : '';
+  const message = typeof asObj?.message === 'string' ? asObj.message : String(err ?? '');
   const lower = message.toLowerCase();
   return name.includes('RenderingCancelled') || lower.includes('cancel');
 }
 
 // Cancel any in-flight render on this canvas and wait for it to settle
 export async function cancelActiveRender(canvas: HTMLCanvasElement): Promise<void> {
-  const currentTask: RenderTask | undefined = (canvas as any).__pdfjsRenderTask as RenderTask | undefined;
+  const withTask = canvas as CanvasWithRenderTask;
+  const currentTask: RenderTask | undefined = withTask.__pdfjsRenderTask;
   if (currentTask) {
     try { currentTask.cancel(); } catch { /* noop */ }
     try { await currentTask.promise; } catch { /* expected on cancel */ }
@@ -344,12 +360,12 @@ export async function renderPage(
   // Start the render task and return it for potential cancellation
   const renderTask = page.render(renderContext);
   // Attach to canvas so future callers can cancel
-  (canvas as any).__pdfjsRenderTask = renderTask;
+  (canvas as CanvasWithRenderTask).__pdfjsRenderTask = renderTask;
   try {
     await renderTask.promise;
   } catch (err) {
     // Always clean up the tracked task
-    (canvas as any).__pdfjsRenderTask = undefined;
+    (canvas as CanvasWithRenderTask).__pdfjsRenderTask = undefined;
     // Propagate non-cancellation errors
     if (!isPdfJsCancelError(err)) {
       throw err;
@@ -358,7 +374,7 @@ export async function renderPage(
     throw err;
   }
   // Clear the tracked task on success
-  (canvas as any).__pdfjsRenderTask = undefined;
+  (canvas as CanvasWithRenderTask).__pdfjsRenderTask = undefined;
 
   return {
     pageNumber,
@@ -389,34 +405,34 @@ export async function extractOutlinesWithPdfJs(pdfDoc: pdfjsLib.PDFDocumentProxy
 
   // Caches to avoid repeated worker calls
   const pageIndexCache = new Map<string, number>();
-  const destCache = new Map<string, any[]>();
+  const destCache = new Map<string, PdfJsDestinationArray>();
 
-  const refKey = (ref: any): string => `${ref?.num ?? 'n'}:${ref?.gen ?? 'g'}`;
+  const refKey = (ref: PdfJsRefLike): string => `${(ref as PdfJsRef | null | undefined)?.num ?? 'n'}:${(ref as PdfJsRef | null | undefined)?.gen ?? 'g'}`;
 
-  async function resolveExplicitDest(destLike: any): Promise<any[] | null> {
+  async function resolveExplicitDest(destLike: PdfJsDestInput): Promise<PdfJsDestinationArray | null> {
     if (!destLike) return null;
-    if (Array.isArray(destLike)) return destLike as any[];
+    if (Array.isArray(destLike)) return destLike as PdfJsDestinationArray;
     if (typeof destLike === 'string') {
       const cached = destCache.get(destLike);
       if (cached) return cached;
       const resolved = await pdfDoc.getDestination(destLike);
       if (Array.isArray(resolved)) {
-        destCache.set(destLike, resolved as any[]);
-        return resolved as any[];
+        destCache.set(destLike, resolved as PdfJsDestinationArray);
+        return resolved as PdfJsDestinationArray;
       }
     }
     return null;
   }
 
-  async function resolvePageIndex(item: any): Promise<number> {
+  async function resolvePageIndex(item: PdfJsOutlineUnknown): Promise<number> {
     try {
       const explicit = await resolveExplicitDest(item?.dest ?? null);
       if (!explicit) return 0;
-      const pageRef = explicit[0];
+      const pageRef = explicit[0] as PdfJsRef;
       const key = refKey(pageRef);
       const cached = pageIndexCache.get(key);
       if (cached !== undefined) return cached;
-      const idx = await pdfDoc.getPageIndex(pageRef as any);
+      const idx = await pdfDoc.getPageIndex(pageRef as PdfJsRef);
       const norm = typeof idx === 'number' && idx >= 0 ? idx : 0;
       pageIndexCache.set(key, norm);
       return norm;
@@ -425,10 +441,12 @@ export async function extractOutlinesWithPdfJs(pdfDoc: pdfjsLib.PDFDocumentProxy
     }
   }
 
-  async function convert(items: any[]): Promise<PDFOutline[]> {
-    return await Promise.all(items.map(async (it) => {
+  async function convert(items: unknown[]): Promise<PDFOutline[]> {
+    return await Promise.all(items.map(async (itUnknown) => {
+      const it = itUnknown as PdfJsOutlineUnknown;
       const to = await resolvePageIndex(it);
-      const children = it?.items && it.items.length ? await convert(it.items) : undefined;
+      const rawChildren = Array.isArray(it?.items) ? it.items : undefined;
+      const children = rawChildren && rawChildren.length ? await convert(rawChildren) : undefined;
       return {
         title: normalizePdfOutlineTitle(String(it?.title ?? 'Untitled')),
         to,
@@ -439,5 +457,111 @@ export async function extractOutlinesWithPdfJs(pdfDoc: pdfjsLib.PDFDocumentProxy
     }));
   }
 
-  return await convert(outlineItems as any[]);
+  return await convert(outlineItems as unknown[]);
+}
+
+export async function extractOutlinesWithPageResolution(pdfDocs:
+  NamedPdf[]): Promise<PDFOutline[]> {
+  let pdfPageOffset = 0;
+  const allOutlines: PDFOutline[] = [];
+
+  // Recursively clone and offset the `to` page index of outlines
+  const withOffset = (items: PDFOutline[], offset: number): PDFOutline[] => {
+    return items.map(item => ({
+      title: item.title,
+      to: item.to + offset,
+      bold: item.bold,
+      italic: item.italic,
+      children: item.children ? withOffset(item.children, offset) : undefined,
+    }));
+  };
+
+  for (const loadedPdfJs of pdfDocs) {
+
+    const outlineItems = await loadedPdfJs.pdf.getOutline();
+    if (!outlineItems || !Array.isArray(outlineItems)) return [];
+
+    // Caches to avoid repeated worker calls
+    const pageIndexCache = new Map<string, number>();
+    const destCache = new Map<string, PdfJsDestinationArray>();
+
+    const refKey = (ref: PdfJsRefLike): string => `${(ref as PdfJsRef | null | undefined)?.num ?? 'n'}:${(ref as PdfJsRef | null | undefined)?.gen ?? 'g'}`;
+
+    async function resolveExplicitDest(destLike: PdfJsDestInput): Promise<PdfJsDestinationArray | null> {
+      if (!destLike) return null;
+      if (Array.isArray(destLike)) return destLike as PdfJsDestinationArray;
+      if (typeof destLike === 'string') {
+        const cached = destCache.get(destLike);
+        if (cached) return cached;
+        const resolved = await loadedPdfJs.pdf.getDestination(destLike);
+        if (Array.isArray(resolved)) {
+          destCache.set(destLike, resolved as PdfJsDestinationArray);
+          return resolved as PdfJsDestinationArray;
+        }
+      }
+      return null;
+    }
+    async function resolvePageIndex(item: PdfJsOutlineUnknown): Promise<number> {
+      try {
+        const explicit = await resolveExplicitDest(item?.dest ?? null);
+        if (!explicit) return 0;
+        const pageRef = explicit[0] as PdfJsRef;
+        const key = refKey(pageRef);
+        const cached = pageIndexCache.get(key);
+        if (cached !== undefined) return cached;
+        const idx = await loadedPdfJs.pdf.getPageIndex(pageRef as PdfJsRef);
+        const norm = typeof idx === 'number' && idx >= 0 ? idx : 0;
+        pageIndexCache.set(key, norm);
+        return norm;
+      } catch {
+        return 0;
+      }
+    }
+
+    async function convert(items: unknown[]): Promise<PDFOutline[]> {
+      return await Promise.all(items.map(async (itUnknown) => {
+        const it = itUnknown as PdfJsOutlineUnknown;
+        const to = await resolvePageIndex(it);
+        const rawChildren = Array.isArray(it?.items) ? it.items : undefined;
+        const children = rawChildren && rawChildren.length ? await convert(rawChildren) : undefined;
+        return {
+          title: normalizePdfOutlineTitle(String(it?.title ?? 'Untitled')),
+          to,
+          bold: !!it?.bold,
+          italic: !!it?.italic,
+          children,
+        } as PDFOutline;
+      }));
+    }
+
+    const pdfOutline = await convert(outlineItems as unknown[]);
+    const offsetOutlines = withOffset(pdfOutline, pdfPageOffset);
+
+    // Create top level outline for each document
+    allOutlines.push({
+      title: loadedPdfJs.name,
+      to: pdfPageOffset,
+      bold: true,
+      italic: false,
+      children: offsetOutlines.length ? offsetOutlines : undefined,
+    });
+
+    pdfPageOffset += loadedPdfJs.pdf.numPages;
+  }
+
+  return allOutlines;
+}
+
+export async function mergePdfs(arrs: NamedBuffer[]) {
+  const mergedPdf = await PDFDocument.create();
+
+  const loadedPdfs = await Promise.all(arrs.map(arr => PDFDocument.load(arr.buffer)));
+
+  for (const pdf of loadedPdfs) {
+    const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+    copiedPages.forEach(page => mergedPdf.addPage(page));
+  }
+
+  const mergedPdfFile = await mergedPdf.save();
+  return mergedPdfFile;
 }

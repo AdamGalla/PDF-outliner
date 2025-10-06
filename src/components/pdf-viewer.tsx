@@ -3,13 +3,15 @@ import {
   renderPage,
   createCanvas,
   isPdfJsCancelError,
-  type PDFPageInfo
 } from '../lib/helpers';
 import docs from '@/stores/doc-store';
 import { cn } from '@/lib/utils';
 import { PDFToolbar } from './pdf-toolbar';
 import { Spinner } from './ui/spinner';
 import { useTheme } from './theme/ThemeProvider';
+import { AlertCircle, Sun, SunDim } from 'lucide-react';
+import { Button } from './ui/button';
+import options from '@/stores/options-store';
 
 interface PDFViewerProps {
   className?: string;
@@ -25,7 +27,6 @@ export default function PDFViewer({
   const currentPageRef = useRef(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [renderedPages, setRenderedPages] = useState<PDFPageInfo[]>([]);
   const [scale, setScale] = useState(1.0);
   const isPanningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
@@ -36,6 +37,10 @@ export default function PDFViewer({
   const setCurrentPage = docs.use.setCurrentPage();
   const navRequest = docs.use.navRequest();
   const clearNavRequest = docs.use.clearNavRequest();
+  const errorLoadingFiles = docs.use.errorLoadingFiles();
+
+  const dimDoc = options.use.dimDoc();
+  const setDimDoc = options.use.setDimDoc();
 
   const scrollToPage = useCallback((pageNumber: number) => {
     if (!containerRef.current || !viewerRef.current) return;
@@ -95,7 +100,7 @@ export default function PDFViewer({
       const fragment = document.createDocumentFragment();
       for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
         const pageWrapper = document.createElement('div');
-        pageWrapper.className = `pdf-page mb-4 flex items-center justify-center ${theme == "dark" ? "brightness-75" : ""}`;
+        pageWrapper.className = `pdf-page mb-4 flex items-center justify-center ${dimDoc ? "brightness-75" : ""}`;
         // Placeholder height based on this page's intrinsic size
         try {
           const page = await pdfDoc.getPage(pageNum);
@@ -137,7 +142,7 @@ export default function PDFViewer({
     } finally {
       if (renderSessionIdRef.current === sessionId) setIsLoading(false);
     }
-  }, [pdfDoc, scale, ensureRendered, theme]);
+  }, [pdfDoc, scale, ensureRendered, dimDoc]);
 
   const handleScaleChange = useCallback((newScale: number) => {
     setScale(newScale)
@@ -417,32 +422,40 @@ export default function PDFViewer({
     }
   }, [pdfDoc, setupPlaceholders]);
 
-  if (!pdfDoc) {
-    return (
-      <div className={`flex items-center justify-center h-64 bg-accent rounded-lg ${className}`}>
-        <p className="text-gray-500">No PDF loaded</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className={`flex items-center justify-center h-64 bg-red-50 rounded-lg ${className}`}>
-        <p className="text-red-600">Error: {error}</p>
-      </div>
-    );
-  }
-
   return (
     <div className={cn("relative flex flex-col h-full", className)}>
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center bg-muted justify-center z-10">
-          <div className="flex items-center gap-2">
-            <Spinner className='size-10 text-primary' />
-            <span className="">Loading PDF pages...</span>
-          </div>
+      {pdfDoc && isLoading ? <div className="absolute inset-0 flex items-center justify-center z-1">
+        <div className="flex items-center gap-2">
+          <Spinner className='size-8 text-primary' />
+          <span className="">Loading PDF pages...</span>
         </div>
-      )}
+      </div> :
+        <>
+          {!pdfDoc && !error && !errorLoadingFiles && <div className="absolute inset-0 flex items-center justify-center z-1">
+            <div className="flex items-center gap-2">
+              <Spinner className='size-8 text-primary' />
+              <span className="">Merging PDFs...</span>
+            </div>
+          </div>
+          }
+          {error && !errorLoadingFiles && <div className="absolute inset-0 flex items-center justify-center z-1">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="size-8 text-red-600" />
+              <span className="">PDF viewer cannot display your pdf,
+                try to save the pdf and inspect it locally.</span>
+            </div>
+          </div>
+          }
+          {errorLoadingFiles && <div className="absolute inset-0 flex items-center bg-red-500/10 justify-center z-1">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="size-8 text-red-600" />
+              <span className="text-red-600">There has been error while merging your pdfs,
+                please try with different files.</span>
+            </div>
+          </div>
+          }
+        </>
+      }
 
       <PDFToolbar
         currentPage={currentPage}
@@ -460,6 +473,12 @@ export default function PDFViewer({
         <div ref={viewerRef} className="mx-auto w-fit min-w-fit">
         </div>
       </div>
+
+      <Button variant="outline" size="icon" className="absolute bottom-5 right-5"
+        onClick={() => setDimDoc(!dimDoc)}
+      >
+        {dimDoc ? <SunDim /> : <Sun />}
+      </Button>
     </div>
   );
 }

@@ -1,20 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { PDFDocument } from 'pdf-lib';
-import { setOutline, extractOutlinesWithPdfJs, loadPdfWithPdfJs } from './lib/helpers';
+import { setOutline, extractOutlinesWithPdfJs, loadPdfWithPdfJs, mergePdfs, extractOutlinesWithPageResolution } from './lib/helpers';
 import docs from './stores/doc-store';
 import MasterLayout from './components/layouts/master-layout';
 import { ModeToggle } from './components/theme/ModeToggle';
+import type { LoadedDocs } from './lib/types';
 
 function App() {
   const [pdfDoc, setPdfDoc] = useState<PDFDocument | null>(null);
 
   const outlines = docs.use.outlines();
   const pdfJsDoc = docs.use.jsDoc();
+  const loadedDocs = docs.use.loadedDocs();
 
   const setPdfJsDoc = docs.use.setJsDoc();
   const setFiles = docs.use.setLoadedDocs();
   const setOutlines = docs.use.setOutlines();
+  const setLoadingOutlines = docs.use.setLoadingOutline();
+  const setErrorLoadingPdf = docs.use.setErrorLoadingFiles();
 
   const fileName = "merged.pdf"
 
@@ -23,28 +27,41 @@ function App() {
     if (selectedFiles.length === 0) return;
 
     const now = Date.now();
+    setLoadingOutlines(true);
     setFiles(selectedFiles.map((f, i) => ({ id: `${now}-${i}-${f.name}-${f.size}`, name: f.name, size: String(f.size), used: true })));
+    await processFiles(selectedFiles);
+  };
 
-    // For now, load only the first file into the viewer until merge pipeline is ready
-    const file = selectedFiles[0];
+  const processFiles = async (files: File[]) => {
     try {
-      const arrayBuffer = await file.arrayBuffer();
+      const namedBuffers = await Promise.all(files.map(async (file) => ({
+        name: file.name,
+        buffer: await file.arrayBuffer()
+      })))
 
-      const doc = await PDFDocument.load(arrayBuffer);
-      setPdfDoc(doc);
+      const mergedBuffer = await mergePdfs(namedBuffers);
+      const mergedPdf = await loadPdfWithPdfJs(mergedBuffer);
+      setPdfJsDoc(mergedPdf);
 
-      const pdfJsDocument = await loadPdfWithPdfJs(arrayBuffer);
-      setPdfJsDoc(pdfJsDocument);
+      const loadedPdfs = await Promise.all(namedBuffers.map(async (namedBuffer) => ({
+        name: namedBuffer.name,
+        pdf: await loadPdfWithPdfJs(namedBuffer.buffer)
+      })))
 
-      const outlines = await extractOutlinesWithPdfJs(pdfJsDocument);
+      const outlines = await extractOutlinesWithPageResolution(loadedPdfs);
+      console.log(outlines)
+
       setOutlines(outlines);
-
-      console.log('PDF loaded successfully. Pages:', doc.getPageCount());
-      console.log('Extracted outlines:', outlines);
+      setLoadingOutlines(false);
     } catch (err) {
       console.error('Error loading PDF:', err);
+      setErrorLoadingPdf(true);
     }
   };
+
+  useEffect(() => {
+
+  }, [loadedDocs])
 
   // TODO: Instead of this, we will have merge pdfs and save function
   const savePdfWithCurrentOutlines = async () => {
@@ -76,7 +93,7 @@ function App() {
   return (
     <div className="w-full h-screen bg-primary-foreground">
       <div className="p-2 h-full">
-        {pdfJsDoc ? (
+        {loadedDocs.length ? (
           <MasterLayout />
         ) : (
           <div className="flex items-center justify-center h-full w-full">

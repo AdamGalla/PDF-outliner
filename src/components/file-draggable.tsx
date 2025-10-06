@@ -158,20 +158,14 @@ export default function FileDraggableList({ className = '' }: FileDraggableListP
             <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
               <input
                 type="checkbox"
-                className="size-4 accent-primary"
+                className="size-4 accent-primary brightness-75"
                 checked={item.used}
                 onChange={() => toggleUsed(index)}
               />
-              Include
             </label>
           </div>
         ))}
         <input className="hidden" id="pdf-upload-add" type="file" accept="application/pdf" multiple onChange={(e) => handleFileChange(e)} />
-        <div className="flex pt-3 mt-2 border-t-1 border-accent">
-          <Button size="lg" variant="outline" className="flex gap-2 w-full"
-            onClick={() => document.getElementById("pdf-upload-add")?.click()}
-          ><Plus />Select more</Button>
-        </div>
       </div>
     </div>
   );
