@@ -6,8 +6,15 @@ import FileDraggableList from "../file-draggable";
 import Options from "../options";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
+import type { RefObject } from "react";
+import type { NamedBuffer } from "@/lib/types";
 
-export default function MasterLayout() {
+interface MasterLayoutProps {
+  pdfBufferRef: RefObject<ArrayBuffer | null>;
+  namedBuffersRef: RefObject<NamedBuffer[]>;
+}
+
+export default function MasterLayout({ pdfBufferRef, namedBuffersRef }: MasterLayoutProps) {
   const outlines = docs.use.outlines();
   const loading = docs.use.loadingOutlines();
 
@@ -40,7 +47,7 @@ export default function MasterLayout() {
           <span className="h-full text-muted-foreground text-lg font-bold">Merge order</span>
         </div>
         <div className="flex-1 min-h-0 overflow-auto">
-          <FileDraggableList className="px-2 py-2" />
+          <FileDraggableList className="px-2 py-2" pdfBufferRef={pdfBufferRef} namedBuffersRef={namedBuffersRef} />
         </div>
         <div className="flex px-2 pt-2 mb-2 border-t-1 border-accent">
           <Button size="lg" variant="outline" className="flex gap-2 w-full"
@@ -51,7 +58,7 @@ export default function MasterLayout() {
           <span className="h-full text-muted-foreground text-lg font-bold">Controls</span>
         </div>
         <div className="min-h-0 overflow-auto">
-          <Options />
+          <Options pdfBufferRef={pdfBufferRef} />
         </div>
       </div>
 

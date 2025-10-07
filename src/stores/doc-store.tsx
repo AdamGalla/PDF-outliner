@@ -15,7 +15,9 @@ interface DocumentState {
   loadingOutlines: boolean;
   loadingPdfView: boolean;
   errorLoadingFiles: boolean;
-  setJsDoc: (jsDoc: PDFDocumentProxy) => void;
+  updatingPdf: boolean;
+  setJsDoc: (jsDoc: PDFDocumentProxy | null) => void;
+  setUpdatingPdf: (val: boolean) => void;
   setLoadedDocs: (loadedDocs: LoadedDocs[]) => void;
   addLoadedDocs: (newDocs: LoadedDocs[]) => void;
   setOutlines: (outlines: PDFOutline[]) => void;
@@ -37,7 +39,9 @@ const useDocumentState = create<DocumentState>((set) => ({
   loadingOutlines: false,
   loadingPdfView: false,
   errorLoadingFiles: false,
+  updatingPdf: false,
   setJsDoc: (jsDoc) => set({ jsDoc: jsDoc }),
+  setUpdatingPdf: (val) => set({ updatingPdf: val }),
   setErrorLoadingFiles: (error) => set({ errorLoadingFiles: error }),
   setLoadedDocs: (loadedDocs) => set({ loadedDocs: loadedDocs }),
   addLoadedDocs: (newDocs) =>

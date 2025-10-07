@@ -13,7 +13,8 @@ export interface NamedPdf {
 }
 
 export interface NamedBuffer {
+  id: string;
   name: string;
-  buffer: ArrayBuffer;
+  bytes: Uint8Array;
 }
 

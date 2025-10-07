@@ -284,9 +284,9 @@ type PdfJsOutlineUnknown = {
 /**
  * Load a PDF document using PDF.js
  */
-export async function loadPdfWithPdfJs(arrayBuffer: ArrayBuffer): Promise<pdfjsLib.PDFDocumentProxy> {
+export async function loadPdfWithPdfJs(data: ArrayBuffer | Uint8Array): Promise<pdfjsLib.PDFDocumentProxy> {
   const loadingTask = pdfjsLib.getDocument({
-    data: arrayBuffer,
+    data,
     cMapUrl: `${BASE_URL}/cmaps/`,
     cMapPacked: true,
   });
@@ -555,7 +555,8 @@ export async function extractOutlinesWithPageResolution(pdfDocs:
 export async function mergePdfs(arrs: NamedBuffer[]) {
   const mergedPdf = await PDFDocument.create();
 
-  const loadedPdfs = await Promise.all(arrs.map(arr => PDFDocument.load(arr.buffer)));
+  // Load each source PDF from a stable copy of its bytes to avoid accidental buffer detachment
+  const loadedPdfs = await Promise.all(arrs.map(arr => PDFDocument.load(arr.bytes)));
 
   for (const pdf of loadedPdfs) {
     const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
@@ -563,5 +564,5 @@ export async function mergePdfs(arrs: NamedBuffer[]) {
   }
 
   const mergedPdfFile = await mergedPdf.save();
-  return mergedPdfFile;
+  return mergedPdfFile; // Uint8Array
 }

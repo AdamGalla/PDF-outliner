@@ -12,6 +12,7 @@ import { useTheme } from './theme/ThemeProvider';
 import { AlertCircle, Sun, SunDim } from 'lucide-react';
 import { Button } from './ui/button';
 import options from '@/stores/options-store';
+import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 
 interface PDFViewerProps {
   className?: string;
@@ -27,7 +28,7 @@ export default function PDFViewer({
   const currentPageRef = useRef(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [scale, setScale] = useState(1.0);
+  const [scale, setScale] = useState(1.5);
   const isPanningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
   const { theme } = useTheme();
@@ -38,6 +39,7 @@ export default function PDFViewer({
   const navRequest = docs.use.navRequest();
   const clearNavRequest = docs.use.clearNavRequest();
   const errorLoadingFiles = docs.use.errorLoadingFiles();
+  const updatingPdf = docs.use.updatingPdf();
 
   const dimDoc = options.use.dimDoc();
   const setDimDoc = options.use.setDimDoc();
@@ -132,7 +134,6 @@ export default function PDFViewer({
 
       Array.from(viewer!.children).forEach((child) => ioRef.current!.observe(child));
 
-      // Render the first few pages at current scale immediately
       for (let i = 1; i <= Math.min(4, pdfDoc.numPages); i++) {
         await ensureRendered(i);
       }
@@ -474,11 +475,19 @@ export default function PDFViewer({
         </div>
       </div>
 
-      <Button variant="outline" size="icon" className="absolute bottom-5 right-5"
+      <Button variant="secondary" size="icon" className="absolute bottom-5 right-5"
         onClick={() => setDimDoc(!dimDoc)}
       >
         {dimDoc ? <SunDim /> : <Sun />}
       </Button>
+
+      <div className="right-5 top-15 absolute">
+        {updatingPdf &&
+          <Alert variant="default">
+            <Spinner />
+            <AlertTitle>Updating your document</AlertTitle>
+          </Alert>}
+      </div>
     </div>
   );
 }

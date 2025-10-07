@@ -1,13 +1,16 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import docs from '@/stores/doc-store';
-import type { LoadedDocs } from '@/lib/types';
+import type { LoadedDocs, NamedBuffer } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { GripVertical, Plus } from 'lucide-react';
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import { Button } from './ui/button';
+import { extractOutlinesWithPageResolution, loadPdfWithPdfJs, mergePdfs } from '@/lib/helpers';
 
 interface FileDraggableListProps {
   className?: string;
+  namedBuffersRef: RefObject<NamedBuffer[]>;
+  pdfBufferRef: RefObject<ArrayBuffer | null>;
 }
 
 type DragData = { index: number };
@@ -21,12 +24,21 @@ interface IndicatorState {
 
 const indicatorState: IndicatorState = {};
 
-export default function FileDraggableList({ className = '' }: FileDraggableListProps) {
+export default function FileDraggableList({ className = '', namedBuffersRef, pdfBufferRef }: FileDraggableListProps) {
   const items = docs.use.loadedDocs();
   const setItems = docs.use.setLoadedDocs();
   const addFiles = docs.use.addLoadedDocs();
+  const setPdfJsDoc = docs.use.setJsDoc();
+  const setLoadingOutlines = docs.use.setLoadingOutline();
+  const setOutlines = docs.use.setOutlines();
+  const setErrorLoadingPdf = docs.use.setErrorLoadingFiles();
+  const setUpdatingPdf = docs.use.setUpdatingPdf();
+
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const mergeSessionRef = useRef(0);
+  const debounceTimerRef = useRef<number | null>(null);
+  const lastSignatureRef = useRef<string>('');
 
   useEffect(() => {
     const container = containerRef.current;
@@ -125,12 +137,96 @@ export default function FileDraggableList({ className = '' }: FileDraggableListP
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(e.currentTarget.files || []);
-    if (selectedFiles.length === 0) return;
+    const files = Array.from(e.currentTarget.files || []);
+    if (files.length === 0) return;
 
     const now = Date.now();
-    addFiles(selectedFiles.map((f, i) => ({ id: `${now}-${i}-${f.name}-${f.size}`, name: f.name, size: String(f.size), used: true })));
+    const newDocs = files.map((f, i) => ({ id: `${now}-${i}-${f.name}-${f.size}`, name: f.name, size: String(f.size), used: true }));
+    const namedBuffers = await Promise.all(files.map(async (file, i) => ({
+      id: newDocs[i].id,
+      name: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    })));
+
+    namedBuffers.forEach((nb) => namedBuffersRef.current.push(nb));
+    addFiles(newDocs);
   }
+
+  useEffect(() => {
+    const signature = items.map(it => `${it.id}:${it.used ? '1' : '0'}`).join('|');
+    if (signature === lastSignatureRef.current) return;
+
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = window.setTimeout(async () => {
+      lastSignatureRef.current = signature;
+      const sessionId = ++mergeSessionRef.current;
+      try {
+        setUpdatingPdf(true);
+        setLoadingOutlines(true);
+
+        const byId = new Map<string, NamedBuffer>();
+        (namedBuffersRef.current || []).forEach(nb => byId.set(nb.id, nb));
+        const selected: NamedBuffer[] = [];
+        for (const it of items) {
+          if (!it.used) continue;
+          const nb = byId.get(it.id);
+          if (nb) selected.push(nb);
+        }
+        if (mergeSessionRef.current !== sessionId) return;
+        if (selected.length === 0) {
+          setOutlines([]);
+          setUpdatingPdf(false);
+          setPdfJsDoc(null);
+          setLoadingOutlines(false);
+          return;
+        }
+
+        const mergedBytes = await mergePdfs(selected);
+        if (mergeSessionRef.current !== sessionId) return;
+
+        // Keep two independent copies: one for storing as buffer, one for PDF.js worker
+        const stableBytes = mergedBytes.slice();
+        const workerBytes = mergedBytes.slice();
+        pdfBufferRef.current = stableBytes.buffer;
+
+        // Load merged PDF into viewer
+        const mergedPdf = await loadPdfWithPdfJs(workerBytes);
+        if (mergeSessionRef.current !== sessionId) return; // cancelled
+        setPdfJsDoc(mergedPdf);
+
+        // Load individual PDFs for outline extraction using safe copies
+        const loadedPdfs = await Promise.all(selected.map(async (nb) => ({
+          name: nb.name,
+          pdf: await loadPdfWithPdfJs(nb.bytes.slice()),
+        })));
+        if (mergeSessionRef.current !== sessionId) return; // cancelled
+
+        const outlines = await extractOutlinesWithPageResolution(loadedPdfs);
+        if (mergeSessionRef.current !== sessionId) return; // cancelled
+
+        setOutlines(outlines);
+        setLoadingOutlines(false);
+        setUpdatingPdf(false);
+      } catch (err) {
+        if (mergeSessionRef.current !== sessionId) return; // ignore cancelled errors
+        console.error('Error loading PDF:', err);
+        setErrorLoadingPdf(true);
+        setLoadingOutlines(false);
+        setUpdatingPdf(false);
+      }
+    }, 250);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      // Do not mutate session here; next run will create a new session when it actually starts
+    };
+  }, [items, namedBuffersRef, pdfBufferRef]);
 
   return (
     <div ref={containerRef} className={cn('p-2 relative', className)} data-list-root="true">

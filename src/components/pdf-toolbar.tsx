@@ -69,7 +69,7 @@ export function PDFToolbar({
   }, [scale, onScaleChange]);
 
   const resetZoom = useCallback(() => {
-    onScaleChange(1.0);
+    onScaleChange(1.5);
   }, [onScaleChange]);
 
   useEffect(() => {
@@ -109,7 +109,7 @@ export function PDFToolbar({
       setZoomInput(`${Math.round(scale * 100)}%`);
       return;
     }
-    const clampedPct = Math.max(25, Math.min(300, pct));
+    const clampedPct = Math.max(25, Math.min(500, pct));
     const newScale = clampedPct / 100;
     onScaleChange(newScale);
     setZoomInput(`${clampedPct}%`);
