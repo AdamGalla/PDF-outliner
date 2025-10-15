@@ -126,7 +126,7 @@ export function PDFToolbar({
 
   return (
     <div className={cn(
-      "flex items-center h-12 justify-between bg-primary-foreground border-b-1 border-accent px-2 py-2 shadow-sm",
+      "flex items-center h-12 justify-between bg-primary-foreground border-b-1 border-border px-2 py-2 shadow-sm",
       className
     )}>
       {/* Left side - Page navigation */}

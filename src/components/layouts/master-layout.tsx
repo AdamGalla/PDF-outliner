@@ -2,7 +2,7 @@ import docs from "@/stores/doc-store";
 import { OutlinePreview } from "../outline-preview";
 import PDFViewer from "../pdf-viewer";
 import { Info, Plus } from "lucide-react";
-import FileDraggableList from "../file-draggable";
+import FileDraggableList from "../documents/file-draggable";
 import Options from "../options";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
@@ -19,10 +19,9 @@ export default function MasterLayout({ pdfBufferRef, namedBuffersRef }: MasterLa
   const loading = docs.use.loadingOutlines();
 
   return <div className="grid grid-cols-1 xl:grid-cols-4 gap-2 h-full min-h-0">
-
-    <div className="xl:col-span-1 h-[60vh] xl:h-full bg-muted border-1 border-accent rounded-lg flex flex-col min-h-0">
+    <div className="xl:col-span-1 h-[60vh] xl:h-full bg-muted border-1 border-border rounded-lg flex flex-col min-h-0">
       <div className="flex flex-col h-full min-h-0">
-        <div className="bg-primary-foreground rounded-t-lg border-b-1 border-accent py-2 px-4 h-12 flex items-center">
+        <div className="bg-primary-foreground rounded-t-lg border-b-1 border-border py-2 px-4 h-12 flex items-center">
           <span className="h-full text-muted-foreground text-lg font-bold">Outlines</span>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
@@ -43,18 +42,18 @@ export default function MasterLayout({ pdfBufferRef, namedBuffersRef }: MasterLa
             </>}
 
         </div>
-        <div className="bg-primary-foreground border-y-1 border-accent py-2 px-4 h-12 flex items-center">
+        <div className="bg-primary-foreground border-y-1 border-border py-2 px-4 h-12 flex items-center">
           <span className="h-full text-muted-foreground text-lg font-bold">Merge order</span>
         </div>
         <div className="flex-1 min-h-0 overflow-auto">
           <FileDraggableList className="px-2 py-2" pdfBufferRef={pdfBufferRef} namedBuffersRef={namedBuffersRef} />
         </div>
-        <div className="flex px-2 pt-2 mb-2 border-t-1 border-accent">
+        <div className="flex px-2 pt-2 mb-2 border-t-1 border-border">
           <Button size="lg" variant="outline" className="flex gap-2 w-full"
             onClick={() => document.getElementById("pdf-upload-add")?.click()}
           ><Plus />Add more PDFs</Button>
         </div>
-        <div className="bg-primary-foreground border-y-1 border-accent py-2 px-4 h-12 flex items-center">
+        <div className="bg-primary-foreground border-y-1 border-border py-2 px-4 h-12 flex items-center">
           <span className="h-full text-muted-foreground text-lg font-bold">Controls</span>
         </div>
         <div className="min-h-0 overflow-auto">
@@ -64,7 +63,7 @@ export default function MasterLayout({ pdfBufferRef, namedBuffersRef }: MasterLa
 
     </div>
 
-    <div className="xl:col-span-3 h-[60vh] xl:h-full border-1 border-accent rounded-lg overflow-hidden min-h-0">
+    <div className="xl:col-span-3 h-[60vh] xl:h-full border-1 border-border rounded-lg overflow-hidden min-h-0">
       <PDFViewer />
     </div>
   </div>

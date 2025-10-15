@@ -294,6 +294,12 @@ export async function loadPdfWithPdfJs(data: ArrayBuffer | Uint8Array): Promise<
   return await loadingTask.promise;
 }
 
+export async function destroyPdfJsDoc(doc: pdfjsLib.PDFDocumentProxy | null | undefined): Promise<void> {
+  if (!doc) return;
+  try { await (doc as any).cleanup?.(); } catch { /* ignore */ }
+  try { await (doc as any).destroy?.(); } catch { /* ignore */ }
+}
+
 // Detect if an error represents a PDF.js rendering cancellation
 export function isPdfJsCancelError(err: unknown): boolean {
   const asObj = err as { name?: unknown; message?: unknown } | undefined;

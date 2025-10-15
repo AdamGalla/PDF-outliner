@@ -31,7 +31,7 @@ export function OutlinePreview({ outlines }: { outlines: PDFOutline[] }) {
             className={`px-2 flex items-center h-full hover:bg-accent/70 ${isActive ? 'bg-accent/40' : ''}`}
           >
             {Array.from({ length: level }).map((_, idx) => (
-              <div key={`g-${path}-${idx}`} className="border-l-2 border-accent h-6 ms-3"></div>
+              <div key={`g-${path}-${idx}`} className="border-l-2 border-border h-6 ms-3"></div>
             ))}
 
             {hasChildren ? (

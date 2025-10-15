@@ -2,10 +2,11 @@ import { useEffect, useRef, type RefObject } from 'react';
 import docs from '@/stores/doc-store';
 import type { LoadedDocs, NamedBuffer } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { GripVertical, Plus } from 'lucide-react';
+import { GripVertical } from 'lucide-react';
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
-import { Button } from './ui/button';
-import { extractOutlinesWithPageResolution, loadPdfWithPdfJs, mergePdfs } from '@/lib/helpers';
+import { extractOutlinesWithPageResolution, loadPdfWithPdfJs, mergePdfs, destroyPdfJsDoc } from '@/lib/helpers';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { animateReorder, clearIndicator, formatSize, getClientYFromLocation, getIndicatorPos, inferBeforeAfter, measurePositions, reorder, showIndicator } from './helpers';
 
 interface FileDraggableListProps {
   className?: string;
@@ -14,15 +15,8 @@ interface FileDraggableListProps {
 }
 
 type DragData = { index: number };
-const indicatorEl: HTMLElement | null = null;
-const indicatorPos: 'before' | 'after' | null = null;
 
-interface IndicatorState {
-  _el?: HTMLElement;
-  _pos?: 'before' | 'after';
-}
 
-const indicatorState: IndicatorState = {};
 
 export default function FileDraggableList({ className = '', namedBuffersRef, pdfBufferRef }: FileDraggableListProps) {
   const items = docs.use.loadedDocs();
@@ -34,11 +28,11 @@ export default function FileDraggableList({ className = '', namedBuffersRef, pdf
   const setErrorLoadingPdf = docs.use.setErrorLoadingFiles();
   const setUpdatingPdf = docs.use.setUpdatingPdf();
 
-
   const containerRef = useRef<HTMLDivElement>(null);
   const mergeSessionRef = useRef(0);
   const debounceTimerRef = useRef<number | null>(null);
   const lastSignatureRef = useRef<string>('');
+  const perFileDocCacheRef = useRef<Map<string, { pdf: PDFDocumentProxy; name: string }>>(new Map());
 
   useEffect(() => {
     const container = containerRef.current;
@@ -192,16 +186,18 @@ export default function FileDraggableList({ className = '', namedBuffersRef, pdf
         const workerBytes = mergedBytes.slice();
         pdfBufferRef.current = stableBytes.buffer;
 
-        // Load merged PDF into viewer
         const mergedPdf = await loadPdfWithPdfJs(workerBytes);
         if (mergeSessionRef.current !== sessionId) return; // cancelled
         setPdfJsDoc(mergedPdf);
 
-        // Load individual PDFs for outline extraction using safe copies
-        const loadedPdfs = await Promise.all(selected.map(async (nb) => ({
-          name: nb.name,
-          pdf: await loadPdfWithPdfJs(nb.bytes.slice()),
-        })));
+        // Load or reuse per-file PDF.js docs for outline extraction
+        const loadedPdfs = await Promise.all(selected.map(async (nb) => {
+          const cached = perFileDocCacheRef.current.get(nb.id);
+          if (cached) return { name: cached.name, pdf: cached.pdf };
+          const pdf = await loadPdfWithPdfJs(nb.bytes.slice());
+          perFileDocCacheRef.current.set(nb.id, { pdf, name: nb.name });
+          return { name: nb.name, pdf };
+        }));
         if (mergeSessionRef.current !== sessionId) return; // cancelled
 
         const outlines = await extractOutlinesWithPageResolution(loadedPdfs);
@@ -224,9 +220,18 @@ export default function FileDraggableList({ className = '', namedBuffersRef, pdf
         window.clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
       }
-      // Do not mutate session here; next run will create a new session when it actually starts
     };
-  }, [items, namedBuffersRef, pdfBufferRef]);
+  }, [items, namedBuffersRef, pdfBufferRef, setErrorLoadingPdf,
+    setLoadingOutlines, setOutlines, setPdfJsDoc, setUpdatingPdf]);
+
+  // Cleanup cached per-file docs on unmount
+  useEffect(() => {
+    return () => {
+      const entries = Array.from(perFileDocCacheRef.current.values());
+      perFileDocCacheRef.current.clear();
+      entries.forEach(({ pdf }) => void destroyPdfJsDoc(pdf));
+    };
+  }, []);
 
   return (
     <div ref={containerRef} className={cn('p-2 relative', className)} data-list-root="true">
@@ -241,7 +246,7 @@ export default function FileDraggableList({ className = '', namedBuffersRef, pdf
             data-index={index}
             data-key={item.id ?? `${index}-${item.name}-${item.size}`}
             className={cn(
-              'group grid grid-cols-[28px_1fr_auto_auto] items-center gap-3 px-3 py-2 rounded-md border-1 border-accent bg-primary-foreground hover:bg-muted transition-colors'
+              'group grid grid-cols-[28px_1fr_auto_auto] items-center gap-3 px-3 py-2 rounded-md border-1 border-border bg-primary-foreground hover:bg-muted transition-colors'
             )}
           >
             <div className="flex items-center justify-center text-muted-foreground cursor-grab active:cursor-grabbing" data-handle="true" aria-label="Drag handle">
@@ -265,118 +270,4 @@ export default function FileDraggableList({ className = '', namedBuffersRef, pdf
       </div>
     </div>
   );
-}
-
-function reorder(list: LoadedDocs[], startIndex: number, endIndex: number): LoadedDocs[] {
-  const next = list.slice();
-  const [removed] = next.splice(startIndex, 1);
-  next.splice(endIndex, 0, removed);
-  return next;
-}
-
-function formatSize(size: string): string {
-  const n = Number(size);
-  if (Number.isNaN(n) || n < 0) return size;
-  if (n < 1024) return `${n} B`;
-  const kb = n / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  const mb = kb / 1024;
-  if (mb < 1024) return `${mb.toFixed(1)} MB`;
-  const gb = mb / 1024;
-  return `${gb.toFixed(1)} GB`;
-}
-
-function measurePositions(container: HTMLDivElement | null): Map<string, DOMRect> {
-  const map = new Map<string, DOMRect>();
-  if (!container) return map;
-  const rows = Array.from(container.querySelectorAll('[data-row="true"]')) as HTMLElement[];
-  rows.forEach((row) => {
-    const key = row.getAttribute('data-key') ?? '';
-    if (!key) return;
-    map.set(key, row.getBoundingClientRect());
-  });
-  return map;
-}
-
-function animateReorder(container: HTMLDivElement | null, prev: Map<string, DOMRect>, skipKey?: string) {
-  if (!container) return;
-  const rows = Array.from(container.querySelectorAll('[data-row="true"]')) as HTMLElement[];
-  rows.forEach((row) => {
-    const key = row.getAttribute('data-key') ?? '';
-    if (skipKey && key === skipKey) {
-      row.style.transform = '';
-      row.style.transition = '';
-      return;
-    }
-    if (!key) return;
-    const previous = prev.get(key);
-    if (!previous) return;
-    const current = row.getBoundingClientRect();
-    const deltaY = previous.top - current.top;
-    const deltaX = previous.left - current.left;
-    if (deltaX === 0 && deltaY === 0) return;
-    row.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
-    row.style.transition = 'transform 0s';
-    requestAnimationFrame(() => {
-      row.style.transform = '';
-      row.style.transition = 'transform 180ms ease-out';
-    });
-  });
-}
-
-function inferBeforeAfter(targetEl: HTMLElement, clientY?: number): 'before' | 'after' {
-  if (clientY == null) return 'after';
-  const rect = targetEl.getBoundingClientRect();
-  const mid = rect.top + rect.height / 2;
-  return clientY < mid ? 'before' : 'after';
-}
-
-function showIndicator(targetEl: HTMLElement, pos: 'before' | 'after') {
-  const root = (targetEl.closest('[data-list-root="true"]') as HTMLElement | null) ?? targetEl.ownerDocument?.body ?? null;
-  if (!root) return;
-
-  const hostRect = root.getBoundingClientRect();
-  const rowRect = targetEl.getBoundingClientRect();
-  const y = pos === 'before' ? (rowRect.top - hostRect.top) : (rowRect.bottom - hostRect.top);
-  const left = Math.max(0, rowRect.left - hostRect.left - 8);
-  const right = Math.max(0, hostRect.right - rowRect.right - 8);
-
-  let el = indicatorState._el;
-  if (!el) {
-    el = document.createElement('div');
-    el.style.position = 'absolute';
-    el.style.height = '3px';
-    el.style.background = 'var(--color-primary, #6e56cf)';
-    el.style.pointerEvents = 'none';
-    el.style.borderRadius = '2px';
-    indicatorState._el = el;
-    root.appendChild(el);
-  }
-  el.style.left = `${left}px`;
-  el.style.right = `${right}px`;
-  el.style.top = `${y - 1}px`;
-  indicatorState._pos = pos;
-  const knob = el.querySelector('[data-knob="true"]') as HTMLElement | null;
-  if (knob) {
-    knob.style.left = '0px';
-    knob.style.top = '0px';
-  }
-}
-
-function clearIndicator() {
-  const el = indicatorState._el;
-  if (el && el.parentElement) {
-    try { el.parentElement.removeChild(el); } catch { console.error("Failed to clear indicator state") }
-  }
-  indicatorState._el = undefined;
-  indicatorState._pos = undefined;
-}
-
-function getIndicatorPos(): 'before' | 'after' | null {
-  return indicatorState._pos ?? null;
-}
-
-function getClientYFromLocation(location: { current: unknown }): number | undefined {
-  const curr = location.current as { input?: { clientY?: number } };
-  return curr.input?.clientY;
 }

@@ -3,6 +3,7 @@ import {
   renderPage,
   createCanvas,
   isPdfJsCancelError,
+  destroyPdfJsDoc,
 } from '../lib/helpers';
 import docs from '@/stores/doc-store';
 import { cn } from '@/lib/utils';
@@ -422,6 +423,13 @@ export default function PDFViewer({
       void setupPlaceholders();
     }
   }, [pdfDoc, setupPlaceholders]);
+
+  // Clean up previous PDF.js document to release worker memory when doc changes
+  useEffect(() => {
+    return () => {
+      void destroyPdfJsDoc(pdfDoc);
+    };
+  }, [pdfDoc]);
 
   return (
     <div className={cn("relative flex flex-col h-full", className)}>
