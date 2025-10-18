@@ -1,4 +1,4 @@
-# PDF Bookmarker
+# PDF Outliner
 
 A React application for viewing, extracting, and modifying PDF outlines (bookmarks) using PDF.js and pdf-lib.
 
