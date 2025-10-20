@@ -8,4 +8,4 @@ export function cn(...inputs: ClassValue[]) {
 export const isDev = import.meta.env.MODE === 'development';
 export const BASE_URL = isDev
   ? 'http://localhost:5173'
-  : 'https://outliner.dev';
+  : 'https://pdf-outliner.vercel.app';
