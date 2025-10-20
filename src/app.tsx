@@ -42,7 +42,7 @@ function App() {
             <div className="absolute left-5 top-5"><ModeToggle /></div>
             <input className="hidden" id="pdf-upload" type="file" accept="application/pdf" multiple onChange={(e) => handleFileChange(e)} />
             <div className="text-center items-center justify-center flex flex-col">
-              <img src="/logo.svg" className="mb-5 size-40" />
+              <img src="/pdf.svg" className="mb-5 size-40" />
               <h1 className="text-primary font-mono font-black text-6xl mb-5">PDF Outliner</h1>
               <Button
                 onClick={() => document.getElementById("pdf-upload")?.click()}
