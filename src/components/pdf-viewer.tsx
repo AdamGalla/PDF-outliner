@@ -13,7 +13,7 @@ import { useTheme } from './theme/ThemeProvider';
 import { AlertCircle, Sun, SunDim } from 'lucide-react';
 import { Button } from './ui/button';
 import options from '@/stores/options-store';
-import { Alert, AlertDescription, AlertTitle } from './ui/alert';
+import { Alert, AlertTitle } from './ui/alert';
 
 interface PDFViewerProps {
   className?: string;
@@ -32,7 +32,6 @@ export default function PDFViewer({
   const [scale, setScale] = useState(1.5);
   const isPanningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
-  const { theme } = useTheme();
 
   const pdfDoc = docs.use.jsDoc();
   const currentPage = docs.use.currentPage();
@@ -194,7 +193,6 @@ export default function PDFViewer({
     clearNavRequest();
   }, [navRequest, scrollToPage, clearNavRequest, pdfDoc]);
 
-  // Utility: capture viewport center state relative to nearest page
   const captureCenterState = useCallback(() => {
     const container = containerRef.current;
     const viewerEl = viewerRef.current;
@@ -224,7 +222,6 @@ export default function PDFViewer({
     return { pageIndex: chosenIndex, yRatio, xRatio };
   }, []);
 
-  // Utility: restore viewport center based on captured state
   const restoreCenterState = useCallback((state: { pageIndex: number; yRatio: number; xRatio: number } | null) => {
     if (!state) return;
     const container = containerRef.current;
@@ -243,7 +240,6 @@ export default function PDFViewer({
     container.scrollLeft = Math.max(0, targetCenterX - container.clientWidth / 2);
   }, []);
 
-  // Utility: apply CSS zoom instantly based on base sizes
   const applyCssZoomInstant = useCallback((targetScale: number) => {
     const viewer = viewerRef.current;
     if (!viewer) return;
@@ -258,33 +254,6 @@ export default function PDFViewer({
       el.style.height = `${cssHeight}px`;
     });
   }, []);
-
-  // Background: re-render all pages at target scale; cancel if scale changes again
-  const rerenderAllPagesCrisp = useCallback(async (targetScale: number, sessionId: number) => {
-    const viewer = viewerRef.current;
-    if (!pdfDoc || !viewer) return;
-    for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-      if (zoomSessionIdRef.current !== sessionId) return;
-      const wrapper = viewer.children[pageNum - 1] as HTMLElement | undefined;
-      if (!wrapper) continue;
-      const canvas = wrapper.querySelector('canvas') as HTMLCanvasElement | null;
-      if (!canvas) continue;
-      const alreadyScale = Number(canvas.dataset.renderScale || 1);
-      if (Math.abs(alreadyScale - targetScale) < 0.01) continue;
-      try {
-        const pageInfo = await renderPage(pdfDoc, pageNum, canvas, { scale: targetScale });
-        if (zoomSessionIdRef.current !== sessionId) return;
-        canvas.dataset.renderScale = String(targetScale);
-        canvas.dataset.baseWidth = String(pageInfo.width / targetScale);
-        canvas.dataset.baseHeight = String(pageInfo.height / targetScale);
-        canvas.style.width = `${pageInfo.width}px`;
-        canvas.style.height = `${pageInfo.height}px`;
-      } catch (err) {
-        if (isPdfJsCancelError(err)) return; // stop if cancelled
-        throw err;
-      }
-    }
-  }, [pdfDoc]);
 
   // On scale change: preserve center, apply instant CSS zoom, then crisp all pages in background
   useEffect(() => {
@@ -313,9 +282,9 @@ export default function PDFViewer({
         }
       });
     }
+
     requestAnimationFrame(() => {
       restoreCenterState(centerState);
-      // Optionally crisp rerender for visible pages only
       const viewer = viewerRef.current;
       if (!viewer) return;
       const visible: number[] = [];
@@ -370,7 +339,7 @@ export default function PDFViewer({
         }
       })();
     });
-  }, [scale, applyCssZoomInstant, captureCenterState, restoreCenterState]);
+  }, [applyCssZoomInstant, captureCenterState, restoreCenterState, pdfDoc]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -424,7 +393,6 @@ export default function PDFViewer({
     }
   }, [pdfDoc, setupPlaceholders]);
 
-  // Clean up previous PDF.js document to release worker memory when doc changes
   useEffect(() => {
     return () => {
       void destroyPdfJsDoc(pdfDoc);
@@ -432,8 +400,8 @@ export default function PDFViewer({
   }, [pdfDoc]);
 
   return (
-    <div className={cn("relative flex flex-col h-full", className)}>
-      {pdfDoc && isLoading ? <div className="absolute inset-0 flex items-center justify-center z-1">
+    <div className={cn("relative flex flex-col h-full flex-1", className)}>
+      {pdfDoc && isLoading ? <div className="absolute inset-0 flex items-center justify-center h-full z-1">
         <div className="flex items-center gap-2">
           <Spinner className='size-8 text-primary' />
           <span className="">Loading PDF pages...</span>

@@ -4,6 +4,7 @@ import docs from './stores/doc-store';
 import MasterLayout from './components/layouts/master-layout';
 import { ModeToggle } from './components/theme/ModeToggle';
 import type { NamedBuffer } from './lib/types';
+import { Github } from 'lucide-react';
 
 function App() {
   const pdfBufferRef = useRef<ArrayBuffer | null>(null);
@@ -38,10 +39,10 @@ function App() {
         {loadedDocs.length ? (
           <MasterLayout pdfBufferRef={pdfBufferRef} namedBuffersRef={namedBuffersRef} />
         ) : (
-          <div className="flex items-center justify-center h-full w-full">
+          <div className="flex h-full w-full pt-40 md:pt-0 md:items-center justify-center">
             <div className="absolute left-5 top-5"><ModeToggle /></div>
             <input className="hidden" id="pdf-upload" type="file" accept="application/pdf" multiple onChange={(e) => handleFileChange(e)} />
-            <div className="text-center items-center justify-center flex flex-col">
+            <div className="text-center items-center flex flex-col">
               <img src="/pdf.svg" className="mb-5 size-40" />
               <h1 className="text-primary font-mono font-black text-6xl mb-5">PDF Outliner</h1>
               <Button
@@ -61,7 +62,15 @@ function App() {
                   After selecting your files, you’ll see a preview of the merged PDF along with all the outlines. This allows you to check that everything looks correct before finalizing the merge. You can also reorder the PDFs directly in the preview to adjust the final order.
                 </p>
                 <p className="text-gray-500 mb-4 text-lg">
-                  Everything happens <span className="font-bold">locally</span> in your browser. No files are uploaded to any server, so you can be confident that your sensitive information stays private.
+                  Everything happens <span className="font-bold">locally</span> in your browser. No files are uploaded to any server, so you can be confident that your sensitive information stays private.{" "}
+                  <a
+                    href="https://github.com/AdamGalla/PDF-outliner"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    View the source on GitHub
+                  </a>
                 </p>
               </div>
 

@@ -129,14 +129,13 @@ export function PDFToolbar({
       "flex items-center h-12 justify-between bg-primary-foreground border-b-1 border-border px-2 py-2 shadow-sm",
       className
     )}>
-      {/* Left side - Page navigation */}
       <div className="flex items-center gap-2 h-full">
         <Button
           variant="outline"
           size="sm"
           onClick={goToPreviousPage}
           disabled={currentPage <= 1}
-          className="h-8 w-8 p-0"
+          className="w-5 sm:size-8 p-0"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
@@ -147,9 +146,9 @@ export function PDFToolbar({
             value={pageInput}
             onChange={handlePageInputChange}
             onBlur={handlePageInputBlur}
-            className="h-full w-10 text-center text-sm bg-accent rounded-lg px-1 focus:outline-none focus:ring-1 focus:ring-zinc-500 focus:border-transparent"
+            className="h-full w-7 sm:w-10 text-center text-sm bg-accent rounded-lg px-1 focus:outline-none focus:ring-1 focus:ring-zinc-500 focus:border-transparent"
           />
-          <span className="text-sm text-gray-600">/ {totalPages}</span>
+          <span className="text-sm text-gray-600 text-nowrap">/ {totalPages}</span>
         </form>
 
         <Button
@@ -157,20 +156,18 @@ export function PDFToolbar({
           size="sm"
           onClick={goToNextPage}
           disabled={currentPage >= totalPages}
-          className="h-8 w-8 p-0"
+          className="w-5 sm:size-8 p-0"
         >
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
 
-      {/* Center - Document info (no zoom here) */}
       <div className="flex items-center gap-4">
-        <span className="text-sm text-muted-foreground">
+        <span className="text-sm text-center text-muted-foreground">
           {totalPages} page{totalPages !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* Right side - Zoom and other controls */}
       <div className="h-full flex items-center gap-1">
         <form onSubmit={handleZoomInputSubmit} className="h-full flex items-center gap-1">
           <input
@@ -210,7 +207,7 @@ export function PDFToolbar({
                 requestAnimationFrame(() => el.setSelectionRange(lastIdx, lastIdx));
               }
             }}
-            className="h-full w-14 text-center text-sm bg-accent rounded-lg px-1 focus:outline-none focus:ring-1 focus:ring-zinc-500 focus:border-transparent"
+            className="h-full w-8 sm:w-14 text-center text-sm bg-accent rounded-lg px-1 focus:outline-none focus:ring-1 focus:ring-zinc-500 focus:border-transparent"
             title="Zoom percentage"
           />
         </form>
@@ -220,7 +217,7 @@ export function PDFToolbar({
           size="sm"
           onClick={zoomOut}
           disabled={scale <= 0.25}
-          className="h-8 w-8 p-0"
+          className="sm:size-8 w-5 p-0"
           title="Zoom out"
         >
           <ZoomOut className="h-4 w-4" />
@@ -230,7 +227,7 @@ export function PDFToolbar({
           variant="outline"
           size="sm"
           onClick={resetZoom}
-          className="h-8 w-8 p-0"
+          className="sm:size-8 w-5 p-0"
           title="Reset zoom"
         >
           <Home className="h-4 w-4" />
@@ -241,7 +238,7 @@ export function PDFToolbar({
           size="sm"
           onClick={zoomIn}
           disabled={scale >= 3.0}
-          className="h-8 w-8 p-0"
+          className="sm:size-8 w-5 p-0"
           title="Zoom in"
         >
           <ZoomIn className="h-4 w-4" />
