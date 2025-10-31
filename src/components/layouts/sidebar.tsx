@@ -8,9 +8,20 @@ import docs from "@/stores/doc-store";
 import type { NamedBuffer } from "@/lib/types";
 import type { RefObject } from "react";
 
+interface SidebarHeaderProps {
+  title: string;
+  top?: boolean;
+}
+
 interface SidebarProps {
   pdfBufferRef: RefObject<ArrayBuffer | null>;
   namedBuffersRef: RefObject<NamedBuffer[]>;
+}
+
+function SidebarHeader({ title, top }: SidebarHeaderProps) {
+  return <div className={`bg-primary-foreground ${top ? "rounded-t-lg" : "border-t-1"} border-b-1 border-border py-2 px-4 h-12 flex items-center`} >
+    <span className="h-full text-muted-foreground text-lg font-normal">{title}</span>
+  </div>
 }
 
 export default function Sidebar({ pdfBufferRef, namedBuffersRef }: SidebarProps) {
@@ -19,9 +30,7 @@ export default function Sidebar({ pdfBufferRef, namedBuffersRef }: SidebarProps)
 
   return <div className="h-full flex flex-col">
     <div className="flex flex-col h-full min-h-0">
-      <div className="bg-primary-foreground rounded-t-lg border-b-1 border-border py-2 px-4 h-12 flex items-center">
-        <span className="h-full text-muted-foreground text-lg font-bold">Outlines</span>
-      </div>
+      <SidebarHeader title="Outlines" top={true} />
       <div className="flex-1 min-h-0 overflow-hidden bg-muted">
         {loading ?
           <div className="h-full flex items-center justify-center">
@@ -40,9 +49,7 @@ export default function Sidebar({ pdfBufferRef, namedBuffersRef }: SidebarProps)
           </div>}
 
       </div>
-      <div className="bg-primary-foreground border-y-1 border-border py-2 px-4 h-12 flex items-center">
-        <span className="h-full text-muted-foreground text-lg font-bold">Merge order</span>
-      </div>
+      <SidebarHeader title="Merge order" />
       <div className="flex-1 min-h-0 bg-muted overflow-auto">
         <FileDraggableList className="px-2 py-2" pdfBufferRef={pdfBufferRef} namedBuffersRef={namedBuffersRef} />
       </div>
@@ -51,9 +58,7 @@ export default function Sidebar({ pdfBufferRef, namedBuffersRef }: SidebarProps)
           onClick={() => document.getElementById("pdf-upload-add")?.click()}
         ><Plus />Add more PDFs</Button>
       </div>
-      <div className="bg-primary-foreground border-y-1 border-border py-2 px-4 h-12 flex items-center">
-        <span className="h-full text-muted-foreground text-lg font-bold">Controls</span>
-      </div>
+      <SidebarHeader title="Controls" />
       <div className="min-h-0 bg-muted overflow-auto">
         <Options pdfBufferRef={pdfBufferRef} />
       </div>
