@@ -54,9 +54,9 @@ export function OutlinePreview({ outlines }: { outlines: PDFOutline[] }) {
                 <button
                   type="button"
                   className={`h-6 w-6 flex items-center justify-center transform transition-transform 
-                              outline-none focus:ring-0 ${isCollapsed ? '-rotate-90' : ''}`}
+                              outline-none focus:ring-0 ${!isCollapsed ? '-rotate-90' : ''}`}
                   onClick={(e) => { e.stopPropagation(); toggle(path); }}
-                  aria-label={isCollapsed ? 'Expand' : 'Collapse'}
+                  aria-label={!isCollapsed ? 'Expand' : 'Collapse'}
                 >
                   <ChevronDown className="size-6 text-muted-foreground" />
                 </button>
@@ -77,7 +77,7 @@ export function OutlinePreview({ outlines }: { outlines: PDFOutline[] }) {
           </div>
         );
 
-        if (hasChildren && !isCollapsed) {
+        if (hasChildren && isCollapsed) {
           renderNode(node.children!, level + 1, path, endPage);
         }
       }

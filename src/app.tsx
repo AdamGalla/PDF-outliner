@@ -40,7 +40,7 @@ function App() {
           <MasterLayout pdfBufferRef={pdfBufferRef} namedBuffersRef={namedBuffersRef} />
         ) : (
           <div className="flex h-full w-full pt-40 md:pt-0 md:items-center justify-center">
-            <div className="absolute left-5 top-5"><ModeToggle /></div>
+            <div className="fixed left-5 bottom-5"><ModeToggle /></div>
             <input className="hidden" id="pdf-upload" type="file" accept="application/pdf" multiple onChange={(e) => handleFileChange(e)} />
             <div className="text-center items-center flex flex-col">
               <img src="/pdf.svg" className="mb-5 size-40" />
@@ -55,7 +55,7 @@ function App() {
               <div className="border-b border-border w-full mt-10" />
 
               <div className="flex flex-col gap-5 justify-center mx-20 max-w-[1000px] mt-10">
-                <p className="text-gray-400 mb-4 text-lg">
+                <p className="mb-4 text-lg">
                   This tool helps you merge PDFs easily while preserving the outline structure of each file. You can start by selecting the PDFs you want to merge, and you can always upload more files later if needed.
                 </p>
                 <p className="text-gray-500 mb-4 text-lg">

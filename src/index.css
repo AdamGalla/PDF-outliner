@@ -1,10 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap');
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(0.9842 0.0034 247.8575);
+  --background: oklch(0.9474 0.0249 263.3287);
   --foreground: oklch(0.2795 0.0368 260.0310);
   --card: oklch(1.0000 0 0);
   --card-foreground: oklch(0.2795 0.0368 260.0310);
@@ -59,7 +60,7 @@
 }
 
 .dark {
-  --background: oklch(0.2077 0.0398 265.7549);
+  --background: oklch(0.2632 0.0248 274.4762);
   --foreground: oklch(0.9288 0.0126 255.5078);
   --card: oklch(0.2795 0.0368 260.0310);
   --card-foreground: oklch(0.9288 0.0126 255.5078);
