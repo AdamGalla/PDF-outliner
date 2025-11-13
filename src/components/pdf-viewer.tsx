@@ -401,21 +401,21 @@ export default function PDFViewer({
 
   return (
     <div className={cn("relative flex flex-col h-full flex-1", className)}>
-      {pdfDoc && isLoading ? <div className="absolute inset-0 flex items-center justify-center h-full z-1">
+      {pdfDoc && isLoading ? <div className="absolute bg-muted inset-0 flex items-center justify-center h-full z-1">
         <div className="flex items-center gap-2">
           <Spinner className='size-8 text-primary' />
           <span className="">Loading PDF pages...</span>
         </div>
       </div> :
         <>
-          {!pdfDoc && !error && !errorLoadingFiles && <div className="absolute inset-0 flex items-center justify-center z-1">
+          {!pdfDoc && !error && !errorLoadingFiles && <div className="absolute bg-muted inset-0 flex items-center justify-center z-1">
             <div className="flex items-center gap-2">
               <Spinner className='size-8 text-primary' />
               <span className="">Merging PDFs...</span>
             </div>
           </div>
           }
-          {error && !errorLoadingFiles && <div className="absolute inset-0 flex items-center justify-center z-1">
+          {error && !errorLoadingFiles && <div className="absolute bg-muted inset-0 flex items-center justify-center z-1">
             <div className="flex items-center gap-2">
               <AlertCircle className="size-8 text-red-600" />
               <span className="">PDF viewer cannot display your pdf,

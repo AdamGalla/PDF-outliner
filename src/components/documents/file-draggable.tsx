@@ -127,6 +127,9 @@ export default function FileDraggableList({ className = '', namedBuffersRef, pdf
 
   const toggleUsed = (idx: number) => {
     const next = items.map((it, i) => i === idx ? { ...it, used: !it.used } : it);
+    if (!next.some((it) => it.used)) {
+      return;
+    }
     setItems(next);
   };
 
@@ -181,16 +184,14 @@ export default function FileDraggableList({ className = '', namedBuffersRef, pdf
         const mergedBytes = await mergePdfs(selected);
         if (mergeSessionRef.current !== sessionId) return;
 
-        // Keep two independent copies: one for storing as buffer, one for PDF.js worker
         const stableBytes = mergedBytes.slice();
         const workerBytes = mergedBytes.slice();
         pdfBufferRef.current = stableBytes.buffer;
 
         const mergedPdf = await loadPdfWithPdfJs(workerBytes);
-        if (mergeSessionRef.current !== sessionId) return; // cancelled
+        if (mergeSessionRef.current !== sessionId) return;
         setPdfJsDoc(mergedPdf);
 
-        // Load or reuse per-file PDF.js docs for outline extraction
         const loadedPdfs = await Promise.all(selected.map(async (nb) => {
           const cached = perFileDocCacheRef.current.get(nb.id);
           if (cached) return { name: cached.name, pdf: cached.pdf };
@@ -198,16 +199,16 @@ export default function FileDraggableList({ className = '', namedBuffersRef, pdf
           perFileDocCacheRef.current.set(nb.id, { pdf, name: nb.name });
           return { name: nb.name, pdf };
         }));
-        if (mergeSessionRef.current !== sessionId) return; // cancelled
+        if (mergeSessionRef.current !== sessionId) return;
 
         const outlines = await extractOutlinesWithPageResolution(loadedPdfs);
-        if (mergeSessionRef.current !== sessionId) return; // cancelled
+        if (mergeSessionRef.current !== sessionId) return;
 
         setOutlines(outlines);
         setLoadingOutlines(false);
         setUpdatingPdf(false);
       } catch (err) {
-        if (mergeSessionRef.current !== sessionId) return; // ignore cancelled errors
+        if (mergeSessionRef.current !== sessionId) return;
         console.error('Error loading PDF:', err);
         setErrorLoadingPdf(true);
         setLoadingOutlines(false);
@@ -224,7 +225,6 @@ export default function FileDraggableList({ className = '', namedBuffersRef, pdf
   }, [items, namedBuffersRef, pdfBufferRef, setErrorLoadingPdf,
     setLoadingOutlines, setOutlines, setPdfJsDoc, setUpdatingPdf]);
 
-  // Cleanup cached per-file docs on unmount
   useEffect(() => {
     return () => {
       const entries = Array.from(perFileDocCacheRef.current.values());
