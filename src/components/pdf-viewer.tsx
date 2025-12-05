@@ -27,19 +27,20 @@ export default function PDFViewer({
   const renderSessionIdRef = useRef(0);
   const zoomSessionIdRef = useRef(0);
   const currentPageRef = useRef(1);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [scale, setScale] = useState(1.5);
   const isPanningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [scale, setScale] = useState(1.5);
+
   const pdfDoc = docs.use.jsDoc();
   const currentPage = docs.use.currentPage();
-  const setCurrentPage = docs.use.setCurrentPage();
   const navRequest = docs.use.navRequest();
-  const clearNavRequest = docs.use.clearNavRequest();
   const errorLoadingFiles = docs.use.errorLoadingFiles();
   const updatingPdf = docs.use.updatingPdf();
+  const setCurrentPage = docs.use.setCurrentPage();
+  const clearNavRequest = docs.use.clearNavRequest();
 
   const dimDoc = options.use.dimDoc();
   const setDimDoc = options.use.setDimDoc();
@@ -54,7 +55,7 @@ export default function PDFViewer({
     if (!pageEl) return;
     pageEl.scrollIntoView({ behavior: 'instant', block: 'start' });
     setCurrentPage(pageNumber);
-  }, []);
+  }, [setCurrentPage]);
 
   const ioRef = useRef<IntersectionObserver | null>(null);
 
@@ -71,7 +72,6 @@ export default function PDFViewer({
       wrapper.appendChild(canvas);
     }
 
-    // If already rendered at current scale, skip
     const alreadyScale = Number(canvas.dataset.renderScale || 0);
     if (Math.abs(alreadyScale - scale) < 0.01) return;
 
