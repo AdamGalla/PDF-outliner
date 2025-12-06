@@ -264,6 +264,7 @@ export interface PDFPageInfo {
   scale: number;
   canvas: HTMLCanvasElement;
   viewport: PageViewport;
+  page: PDFPageProxy;
   renderTask: RenderTask;
 }
 
@@ -389,6 +390,7 @@ export async function renderPage(
     scale,
     canvas,
     viewport,
+    page,
     renderTask,
   };
 }

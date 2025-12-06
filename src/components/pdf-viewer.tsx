@@ -5,6 +5,7 @@ import {
   isPdfJsCancelError,
   destroyPdfJsDoc,
 } from '../lib/helpers';
+import { TextLayerBuilder } from 'pdfjs-dist/web/pdf_viewer';
 import docs from '@/stores/doc-store';
 import { cn } from '@/lib/utils';
 import { PDFToolbar } from './pdf-toolbar';
@@ -18,6 +19,11 @@ import { Alert, AlertTitle } from './ui/alert';
 interface PDFViewerProps {
   className?: string;
 }
+
+type TextLayerEntry = {
+  builder: TextLayerBuilder;
+  div: HTMLDivElement;
+};
 
 export default function PDFViewer({
   className = '',
@@ -58,12 +64,21 @@ export default function PDFViewer({
   }, [setCurrentPage]);
 
   const ioRef = useRef<IntersectionObserver | null>(null);
+  const textLayerCacheRef = useRef<Map<number, TextLayerEntry>>(new Map());
+
+  const clearTextLayers = useCallback(() => {
+    textLayerCacheRef.current.forEach(({ builder }) => {
+      try { builder.cancel(); } catch { /* ignore cancel errors */ }
+    });
+    textLayerCacheRef.current.clear();
+  }, []);
 
   const ensureRendered = useCallback(async (pageNum: number) => {
     if (!pdfDoc || !viewerRef.current) return;
     const viewer = viewerRef.current;
     const wrapper = viewer.children[pageNum - 1] as HTMLElement | undefined;
     if (!wrapper) return;
+    wrapper.style.position = 'relative';
 
     let canvas = wrapper.querySelector('canvas') as HTMLCanvasElement | null;
     if (!canvas) {
@@ -73,21 +88,59 @@ export default function PDFViewer({
     }
 
     const alreadyScale = Number(canvas.dataset.renderScale || 0);
-    if (Math.abs(alreadyScale - scale) < 0.01) return;
+    let pageInfo: Awaited<ReturnType<typeof renderPage>> | null = null;
+
+    if (Math.abs(alreadyScale - scale) >= 0.01) {
+      try {
+        pageInfo = await renderPage(pdfDoc, pageNum, canvas, { scale });
+        canvas.dataset.renderScale = String(scale);
+        canvas.dataset.baseWidth = String(pageInfo.width / scale);
+        canvas.dataset.baseHeight = String(pageInfo.height / scale);
+        // Canvas size matches the rendered pixels; no additional CSS zoom needed here
+        canvas.style.width = `${pageInfo.width}px`;
+        canvas.style.height = `${pageInfo.height}px`;
+        // Ensure wrapper height matches the rendered page height at current scale
+        wrapper.style.height = `${pageInfo.height}px`;
+      } catch (err) {
+        if (isPdfJsCancelError(err)) return; // ignore expected cancellations
+        throw err;
+      }
+    } else if (!canvas.dataset.baseHeight) {
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale });
+        canvas.dataset.baseWidth = String(viewport.width / scale);
+        canvas.dataset.baseHeight = String(viewport.height / scale);
+      } catch {
+        // ignore sizing cache failures; next render will fill
+      }
+    }
+
+    const entryMap = textLayerCacheRef.current;
+    let entry = entryMap.get(pageNum);
+    const pdfPage = pageInfo?.page ?? entry?.builder.pdfPage ?? await pdfDoc.getPage(pageNum);
+    if (!entry) {
+      const builder = new TextLayerBuilder({ pdfPage });
+      const div = builder.div;
+      div.style.zIndex = '2';
+      wrapper.appendChild(div);
+      entry = { builder, div };
+      entryMap.set(pageNum, entry);
+    }
+
+    const viewport = pageInfo?.viewport ?? pdfPage.getViewport({ scale });
+    const textDiv = entry.div;
+    textDiv.style.width = `${viewport.width}px`;
+    textDiv.style.height = `${viewport.height}px`;
+    textDiv.dataset.renderScale = String(scale);
+    textDiv.dataset.baseWidth = String(viewport.width / scale);
+    textDiv.dataset.baseHeight = String(viewport.height / scale);
 
     try {
-      const pageInfo = await renderPage(pdfDoc, pageNum, canvas, { scale });
-      canvas.dataset.renderScale = String(scale);
-      canvas.dataset.baseWidth = String(pageInfo.width / scale);
-      canvas.dataset.baseHeight = String(pageInfo.height / scale);
-      // Canvas size matches the rendered pixels; no additional CSS zoom needed here
-      canvas.style.width = `${pageInfo.width}px`;
-      canvas.style.height = `${pageInfo.height}px`;
-      // Ensure wrapper height matches the rendered page height at current scale
-      wrapper.style.height = `${pageInfo.height}px`;
+      await entry.builder.render({ viewport });
     } catch (err) {
-      if (isPdfJsCancelError(err)) return; // ignore expected cancellations
-      throw err;
+      if (isPdfJsCancelError(err)) return;
+      console.error('Failed to render text layer', err);
     }
   }, [pdfDoc, scale]);
 
@@ -100,9 +153,11 @@ export default function PDFViewer({
     try {
       const viewer = viewerRef.current;
       const fragment = document.createDocumentFragment();
+      clearTextLayers();
       for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
         const pageWrapper = document.createElement('div');
         pageWrapper.className = `pdf-page mb-4 flex items-center justify-center ${dimDoc ? "brightness-75" : ""}`;
+        pageWrapper.style.position = 'relative';
         // Placeholder height based on this page's intrinsic size
         try {
           const page = await pdfDoc.getPage(pageNum);
@@ -143,7 +198,7 @@ export default function PDFViewer({
     } finally {
       if (renderSessionIdRef.current === sessionId) setIsLoading(false);
     }
-  }, [pdfDoc, scale, ensureRendered, dimDoc]);
+  }, [pdfDoc, scale, ensureRendered, dimDoc, clearTextLayers]);
 
   const handleScaleChange = useCallback((newScale: number) => {
     setScale(newScale)
@@ -253,42 +308,50 @@ export default function PDFViewer({
       el.style.width = `${cssWidth}px`;
       el.style.height = `${cssHeight}px`;
     });
+    const textLayers = viewer.querySelectorAll<HTMLElement>('.textLayer');
+    textLayers.forEach((layer) => {
+      const baseW = Number(layer.dataset.baseWidth || (layer.clientWidth / Number(layer.dataset.renderScale || 1)) || layer.clientWidth || 1);
+      const baseH = Number(layer.dataset.baseHeight || (layer.clientHeight / Number(layer.dataset.renderScale || 1)) || layer.clientHeight || 1);
+      const cssWidth = baseW * targetScale;
+      const cssHeight = baseH * targetScale;
+      layer.style.width = `${cssWidth}px`;
+      layer.style.height = `${cssHeight}px`;
+    });
   }, []);
 
   // On scale change: preserve center, apply instant CSS zoom, then crisp all pages in background
   useEffect(() => {
-    if (!viewerRef.current) return;
+    if (!viewerRef.current || !pdfDoc) return;
     const centerState = captureCenterState();
     const sessionId = ++zoomSessionIdRef.current;
-    // Update canvases instantly
+    // Update canvases/text layers instantly
     applyCssZoomInstant(scale);
     // Update wrapper heights for all pages (rendered and placeholders) based on per-page base heights
-    if (viewerRef.current) {
-      Array.from(viewerRef.current.children).forEach((el) => {
-        const wrapper = el as HTMLElement;
-        const canvas = wrapper.querySelector('canvas') as HTMLCanvasElement | null;
-        if (canvas) {
-          const baseH = Number(
-            canvas.dataset.baseHeight ||
-            (canvas.height / Number(canvas.dataset.renderScale || 1)) ||
-            canvas.height
-          );
+    Array.from(viewerRef.current.children).forEach((el) => {
+      const wrapper = el as HTMLElement;
+      const canvas = wrapper.querySelector('canvas') as HTMLCanvasElement | null;
+      if (canvas) {
+        const baseH = Number(
+          canvas.dataset.baseHeight ||
+          (canvas.height / Number(canvas.dataset.renderScale || 1)) ||
+          canvas.height
+        );
+        wrapper.style.height = `${baseH * scale}px`;
+      } else {
+        const baseH = Number(wrapper.dataset.baseHeight || 0);
+        if (!Number.isNaN(baseH) && baseH > 0) {
           wrapper.style.height = `${baseH * scale}px`;
-        } else {
-          const baseH = Number(wrapper.dataset.baseHeight || 0);
-          if (!Number.isNaN(baseH) && baseH > 0) {
-            wrapper.style.height = `${baseH * scale}px`;
-          }
         }
-      });
-    }
+      }
+    });
 
     requestAnimationFrame(() => {
+      if (zoomSessionIdRef.current !== sessionId) return;
       restoreCenterState(centerState);
       const viewer = viewerRef.current;
-      if (!viewer) return;
+      const container = containerRef.current;
+      if (!viewer || !container) return;
       const visible: number[] = [];
-      const container = containerRef.current!;
       for (let i = 0; i < viewer.children.length; i++) {
         const el = viewer.children[i] as HTMLElement;
         const top = el.offsetTop;
@@ -297,49 +360,20 @@ export default function PDFViewer({
         const viewBottom = container.scrollTop + container.clientHeight + 800;
         if (bottom >= viewTop && top <= viewBottom) visible.push(i + 1);
       }
+      const visibleSet = new Set(visible);
       (async () => {
         for (const num of visible) {
-          // Re-render visible pages at target scale in background
-          const wrapper = viewer.children[num - 1] as HTMLElement;
-          const canvas = wrapper.querySelector('canvas') as HTMLCanvasElement | null;
-          if (!canvas) continue;
-          const alreadyScale = Number(canvas.dataset.renderScale || 1);
-          if (Math.abs(alreadyScale - scale) < 0.01) continue;
-          try {
-            const pageInfo = await renderPage(pdfDoc!, num, canvas, { scale });
-            canvas.dataset.renderScale = String(scale);
-            canvas.dataset.baseWidth = String(pageInfo.width / scale);
-            canvas.dataset.baseHeight = String(pageInfo.height / scale);
-            canvas.style.width = `${pageInfo.width}px`;
-            canvas.style.height = `${pageInfo.height}px`;
-          } catch (err) {
-            if (isPdfJsCancelError(err)) continue; // ignore and proceed to next
-            throw err;
-          }
+          if (zoomSessionIdRef.current !== sessionId) return;
+          await ensureRendered(num);
         }
-        // Also queue re-crisping of the rest in the background progressively
-        for (let pageNum = 1; pageNum <= pdfDoc!.numPages; pageNum++) {
-          if (visible.includes(pageNum)) continue;
-          const wrapper = viewer.children[pageNum - 1] as HTMLElement;
-          const canvas = wrapper.querySelector('canvas') as HTMLCanvasElement | null;
-          if (!canvas) continue;
-          const already = Number(canvas.dataset.renderScale || 1);
-          if (Math.abs(already - scale) < 0.01) continue;
-          try {
-            const pageInfo = await renderPage(pdfDoc!, pageNum, canvas, { scale });
-            canvas.dataset.renderScale = String(scale);
-            canvas.dataset.baseWidth = String(pageInfo.width / scale);
-            canvas.dataset.baseHeight = String(pageInfo.height / scale);
-            canvas.style.width = `${pageInfo.width}px`;
-            canvas.style.height = `${pageInfo.height}px`;
-          } catch (err) {
-            if (isPdfJsCancelError(err)) continue;
-            throw err;
-          }
+        for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+          if (visibleSet.has(pageNum)) continue;
+          if (zoomSessionIdRef.current !== sessionId) return;
+          await ensureRendered(pageNum);
         }
       })();
     });
-  }, [applyCssZoomInstant, captureCenterState, restoreCenterState, pdfDoc]);
+  }, [applyCssZoomInstant, captureCenterState, restoreCenterState, pdfDoc, scale, ensureRendered]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -347,6 +381,8 @@ export default function PDFViewer({
 
     const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.textLayer')) return;
       isPanningRef.current = true;
       container.style.cursor = 'grabbing';
       panStartRef.current = {
@@ -392,6 +428,12 @@ export default function PDFViewer({
       void setupPlaceholders();
     }
   }, [pdfDoc, setupPlaceholders]);
+
+  useEffect(() => {
+    return () => {
+      clearTextLayers();
+    };
+  }, [clearTextLayers]);
 
   useEffect(() => {
     return () => {
